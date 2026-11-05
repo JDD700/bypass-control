@@ -10,6 +10,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Shizuku handshake (mirrored by hand from the Shizuku provider
+         library's own manifest: there is no manifest merger in the manual
+         build pipeline, so library entries must be mirrored here. Without
+         this permission + the V3_SUPPORT meta-data below, a Shizuku 13.x
+         server does not hand its binder to the client — the exact defect
+         fixed in PlmnLock v1.2 on 2026-11-05.) -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <application
         android:label="Bypass Control"
         android:icon="@mipmap/ic_launcher"
@@ -40,6 +48,10 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <meta-data
+            android:name="moe.shizuku.client.V3_SUPPORT"
+            android:value="true" />
 
         <!-- Shizuku binder provider (v10): how the Shizuku server hands this
              app its binder for the optional Shizuku write path. Inert when
