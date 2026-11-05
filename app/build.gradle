@@ -1,0 +1,30 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.pooh.passcontrol'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.pooh.passcontrol'
+        minSdk 22
+        targetSdk 22
+        versionCode 10
+        versionName '1.9'
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

@@ -1,0 +1,21 @@
+# Signing keys - NEVER commit. Official releases are signed with the
+# maintainer's private keystore, which lives outside this repo.
+debug.keystore
+*.keystore
+
+# Local toolchains and downloads (see build-manual.sh requirements)
+tools/jdk/
+tools/jdk*.tar.gz
+tools/gradle*/
+tools/android-sdk/
+tools/*.zip
+tools/shizuku/dl/
+tools/shizuku/*.jar
+
+# Build output
+build/
+app/build/
+.gradle/
+local.properties
+*.apk
+*.idsig
