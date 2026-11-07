@@ -233,6 +233,12 @@ public class PassService extends Service {
         }
     }
 
+    // Notification state for coloring (v1.9.2): 0 = off (gray accent),
+    // 1 = bypass on (blue accent + colorized background where the OS
+    // honors it), 2 = write failed (red accent). Set by updateNotif.
+    private boolean notifOn = false;
+    private boolean notifFail = false;
+
     private Notification buildNotif(String text) {
         PendingIntent pi = PendingIntent.getActivity(this, 0,
                 new Intent(this, MainActivity.class),
@@ -246,15 +252,23 @@ public class PassService extends Service {
         PendingIntent tpi = Build.VERSION.SDK_INT >= 26
                 ? PendingIntent.getForegroundService(this, 3001, toggle, tflags)
                 : PendingIntent.getService(this, 3001, toggle, tflags);
-        return new Notification.Builder(this, CHANNEL)
+        Notification.Builder b = new Notification.Builder(this, CHANNEL)
                 .setContentTitle("Bypass Control")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
                 .setContentIntent(pi)
                 .setOngoing(true)
                 .addAction(android.R.drawable.ic_lock_power_off,
-                        auto ? "Turn Off" : "Turn On (Auto)", tpi)
-                .build();
+                        auto ? "Turn Off" : "Turn On (Auto)", tpi);
+        // Accent color follows the bypass state (v1.9.2): blue while ON
+        // (same blue as the in-app status card), gray while OFF, red on a
+        // failed write. The accent tints the icon and app name everywhere;
+        // setColorized additionally asks for a full blue background while
+        // ON - stock Android honors that for ongoing notifications, One UI
+        // may keep its own shade background and apply only the tint.
+        b.setColor(notifFail ? 0xFFDC2626 : notifOn ? 0xFF2563EB : 0xFF6B7280);
+        if (notifOn && Build.VERSION.SDK_INT >= 26) b.setColorized(true);
+        return b.build();
     }
 
     private void startFg(String text) {
@@ -267,8 +281,14 @@ public class PassService extends Service {
         }
     }
 
-    private void updateNotif(String text) {
+    /** Refresh the persistent notification. v1.9.2: the text is one short
+     *  state-first line ("Bypass ON · 88%") - raw internals (plugged=,
+     *  pass_through=) live in the in-app log, not here. state drives the
+     *  color: 0 = off, 1 = on, 2 = write failed. */
+    private void updateNotif(String text, int state) {
         stateText = text;
+        notifOn = state == 1;
+        notifFail = state == 2;
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(NOTIF_ID, buildNotif(text));
     }
@@ -335,7 +355,7 @@ public class PassService extends Service {
             if (cur != null && cur == 1) {
                 doWrite(0, level, "unplugged reset");
             } else {
-                updateNotif(level + "%  unplugged  pass_through=" + pt);
+                updateNotif("Unplugged · " + level + "%", 0);
             }
             return;
         }
@@ -357,7 +377,7 @@ public class PassService extends Service {
             if (capActive) {
                 if (cur != null && cur == 1) {
                     onBaselineLevel = level; // keep post-cap drift tracking fresh
-                    updateNotif(level + "%  hard cap " + Pc.capPct(this) + "% - bypass ON (not charging)  " + autoSummary());
+                    updateNotif("Bypass ON · " + level + "% · cap " + Pc.capPct(this) + "%", 1);
                 } else {
                     doWrite(1, level, "hard cap: never charge above " + Pc.capPct(this) + "%");
                 }
@@ -376,7 +396,7 @@ public class PassService extends Service {
             if (cur != null && cur == 1) {
                 doWrite(0, level, "mode OFF");
             } else {
-                updateNotif(level + "%  plugged=" + plugged + "  pass_through=" + pt + "  bypass OFF (mode Off)");
+                updateNotif("Bypass OFF · " + level + "%", 0);
             }
             return;
         }
@@ -393,7 +413,7 @@ public class PassService extends Service {
             if (cur != null && cur == 1) {
                 doWrite(0, level, "outside window " + Pc.fmtTime(Pc.startMin(this)) + "-" + Pc.fmtTime(Pc.endMin(this)));
             } else {
-                updateNotif(level + "%  outside window (charging)  " + autoSummary());
+                updateNotif("Bypass OFF · " + level + "% · window " + Pc.fmtTime(Pc.startMin(this)) + "–" + Pc.fmtTime(Pc.endMin(this)), 0);
             }
             return;
         }
@@ -404,7 +424,7 @@ public class PassService extends Service {
             int desired = (level >= hold) ? 1 : 0;
             if (desired == 1 && level < 25) { // hard safety floor, as below
                 Pc.log(this, "Refused ON at " + level + "% (< 25% floor)");
-                updateNotif(level + "%  below safety floor");
+                updateNotif("Bypass OFF · " + level + "% · safety floor", 0);
                 return;
             }
             if (cur == null || cur != desired) {
@@ -412,7 +432,7 @@ public class PassService extends Service {
                         ? "settings changed: at/above " + hold + "% - not charging"
                         : "settings changed: below " + hold + "% - charging");
             } else {
-                updateNotif(level + "%  pass_through=" + desired + " (settings re-eval, no change)");
+                updateNotif(desired == 1 ? "Bypass ON · " + level + "%" : "Bypass OFF · " + level + "%", desired);
             }
             return;
         }
@@ -421,7 +441,7 @@ public class PassService extends Service {
             // At/above the threshold: the phone doesn't charge.
             if (level < 25) { // hard safety floor (defensive; threshold is >= 30)
                 Pc.log(this, "Refused ON at " + level + "% (< 25% floor)");
-                updateNotif(level + "%  below safety floor");
+                updateNotif("Bypass OFF · " + level + "% · safety floor", 0);
                 return;
             }
             if (!isOn) {
@@ -431,7 +451,7 @@ public class PassService extends Service {
                 doWrite(1, level, why);
             } else {
                 trackOnBaseline(level);
-                updateNotif(level + "%  bypass ON (not charging)  " + autoSummary());
+                updateNotif("Bypass ON · " + level + "%", 1);
             }
             return;
         }
@@ -439,7 +459,7 @@ public class PassService extends Service {
         if (isOn) {
             doWrite(0, level, "below " + hold + "% - charging");
         } else {
-            updateNotif(level + "%  charging (below " + hold + "%)  " + autoSummary());
+            updateNotif("Charging to " + hold + "% · " + level + "%", 0);
         }
     }
 
@@ -482,7 +502,7 @@ public class PassService extends Service {
             onBaselineLevel = (v == 1) ? level : -1;
             clearWarning(); // a successful write ends any warning condition
             Pc.log(this, "Set pass_through=" + v + " (" + why + ", batt " + level + "%) VERIFIED readback=" + r.readback);
-            updateNotif(level + "%  pass_through=" + v + " VERIFIED");
+            updateNotif(v == 1 ? "Bypass ON · " + level + "%" : "Bypass OFF · " + level + "%", v);
         } else {
             String msg = "WRITE FAILED pass_through->" + v + " (" + why + ") readback=" + r.readback
                     + (r.error != null ? " err=" + r.error : "");
@@ -490,7 +510,7 @@ public class PassService extends Service {
             // The most important alert there is: the app tried to change the
             // bypass state and couldn't. De-duped per failed target state.
             postWarning(msg, "WRITE FAILED->" + v);
-            updateNotif(level + "%  WRITE FAILED -> " + v);
+            updateNotif("Bypass write failed · " + level + "%", 2);
         }
     }
 }

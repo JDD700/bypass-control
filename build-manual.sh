@@ -54,7 +54,7 @@ sed 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<ma
 "$BT/aapt2" compile --dir app/src/main/res -o build/manual/res.zip
 "$BT/aapt2" link -o build/manual/unsigned.apk -I "$AJAR" --manifest build/manual/AndroidManifest.xml \
   build/manual/res.zip \
-  --min-sdk-version 22 --target-sdk-version 22 --version-code 11 --version-name 1.9.1
+  --min-sdk-version 22 --target-sdk-version 22 --version-code 12 --version-name 1.9.2
 
 (cd build/manual/dex && zip -q ../unsigned.apk classes.dex)
 "$BT/zipalign" -f -p 4 build/manual/unsigned.apk build/manual/aligned.apk
